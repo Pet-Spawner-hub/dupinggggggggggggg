@@ -1,0 +1,126 @@
+local player = game.Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- ScreenGui setup
+local screenGui = Instance.new("ScreenGui", playerGui)
+screenGui.Name = "PetDupeGUI"
+screenGui.ResetOnSpawn = false
+
+-- Duplicate Button — higher position
+local duplicateButton = Instance.new("TextButton", screenGui)
+duplicateButton.Name = "DuplicateButton"
+duplicateButton.Size = UDim2.new(0,160,0,50)
+duplicateButton.Position = UDim2.new(0.5,-80,0.7,0)
+duplicateButton.BackgroundColor3 = Color3.new(0,0,0)
+duplicateButton.TextColor3 = Color3.new(1,1,1)
+duplicateButton.Font = Enum.Font.SourceSansBold
+duplicateButton.TextSize = 22
+duplicateButton.Text = "Duplicate"
+duplicateButton.Draggable = true
+duplicateButton.Selectable = true
+duplicateButton.Active = true
+
+-- Message label
+local msgLabel = Instance.new("TextLabel", screenGui)
+msgLabel.Size = UDim2.new(0,300,0,40)
+msgLabel.Position = UDim2.new(0.5,-150,0.65,0)
+msgLabel.BackgroundColor3 = Color3.new(0,0,0)
+msgLabel.TextColor3 = Color3.new(1,1,1)
+msgLabel.Font = Enum.Font.SourceSansBold
+msgLabel.TextSize = 20
+msgLabel.Visible = false
+
+-- Container for garden-placed pets
+local placedFolder = workspace:FindFirstChild("PlacedPets") or Instance.new("Folder", workspace)
+placedFolder.Name = "PlacedPets"
+
+-- Helpers
+local function getHeldTool()
+    local char = player.Character or player.CharacterAdded:Wait()
+    return char:FindFirstChildOfClass("Tool")
+end
+
+-- Create stats UI above placed pet
+local function createStatsGui(parentPet, age, weight)
+    local billboard = Instance.new("BillboardGui", parentPet.PrimaryPart or parentPet)
+    billboard.Size = UDim2.new(0,150,0,50)
+    billboard.StudsOffset = Vector3.new(0,2,0)
+    billboard.AlwaysOnTop = true
+
+    local label = Instance.new("TextLabel", billboard)
+    label.Size = UDim2.new(1,0,1,0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1,1,1)
+    label.Font = Enum.Font.SourceSansBold
+    label.TextSize = 14
+    label.Text = ("Age: %s  Weight: %s"):format(age, weight)
+end
+
+-- Enable drag to garden
+local function enableDragPlacement(tool)
+    local petModel = tool:FindFirstChildWhichIsA("Model")
+    if not petModel or not petModel.PrimaryPart then return end
+
+    local dragging = false
+    local dragConn
+
+    tool.Equipped:Connect(function()
+        dragConn = player:GetMouse().Move:Connect(function()
+            if dragging then
+                local mouse = player:GetMouse()
+                local ray = workspace:Raycast(workspace.CurrentCamera.CFrame.Position,
+                    workspace.CurrentCamera.CFrame.LookVector * 50, RaycastParams.new())
+                if ray then
+                    petModel:SetPrimaryPartCFrame(CFrame.new(ray.Position + Vector3.new(0, petModel.PrimaryPart.Size.Y/2,0)))
+                end
+            end
+        end)
+    end)
+
+    tool.Activated:Connect(function()
+        dragging = not dragging
+        if not dragging then
+            -- Place pet
+            petModel.Parent = placedFolder
+            local age = petModel:FindFirstChild("Age") and petModel.Age.Value or "N/A"
+            local weight = petModel:FindFirstChild("Weight") and petModel.Weight.Value or "N/A"
+            createStatsGui(petModel, age, weight)
+            tool:Destroy()
+        end
+    end)
+
+    tool.Unequipped:Connect(function()
+        if dragConn then dragConn:Disconnect() end
+        petModel.Parent = tool
+    end)
+end
+
+-- Duplicate pet process
+local function duplicatePet()
+    local heldTool = getHeldTool()
+    if not heldTool then
+        msgLabel.Text = "❌ Hold a pet tool first"
+        msgLabel.Visible = true
+        task.delay(2, function() msgLabel.Visible = false end)
+        return
+    end
+
+    msgLabel.Text = "🔁 Duplicating..."
+    msgLabel.Visible = true
+
+    task.delay(1, function()
+        msgLabel.Visible = false
+        local clone = heldTool:Clone()
+        clone.Name = heldTool.Name .. "_Clone"
+        clone.Parent = player.Backpack
+        enableDragPlacement(clone)
+    end)
+end
+
+-- Connect input
+duplicateButton.MouseButton1Click:Connect(duplicatePet)
+duplicateButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        duplicatePet()
+    end
+end)
