@@ -1,0 +1,77 @@
+local player = game.Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Create GUI
+local screenGui = Instance.new("ScreenGui", playerGui)
+screenGui.Name = "PetDuplicationGUI"
+
+-- Create Duplicate Button (Black)
+local duplicateButton = Instance.new("TextButton", screenGui)
+duplicateButton.Name = "DuplicateButton"
+duplicateButton.Size = UDim2.new(0, 160, 0, 50)
+duplicateButton.Position = UDim2.new(0.5, -80, 0.9, 0)
+duplicateButton.BackgroundColor3 = Color3.new(0, 0, 0)
+duplicateButton.TextColor3 = Color3.new(1, 1, 1)
+duplicateButton.Font = Enum.Font.SourceSansBold
+duplicateButton.TextSize = 22
+duplicateButton.Text = "Duplicate"
+duplicateButton.Draggable = true
+duplicateButton.Active = true
+duplicateButton.Selectable = true
+
+-- Message Label
+local msg = Instance.new("TextLabel", screenGui)
+msg.Size = UDim2.new(0, 300, 0, 40)
+msg.Position = UDim2.new(0.5, -150, 0.8, 0)
+msg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+msg.TextColor3 = Color3.new(1, 1, 1)
+msg.Font = Enum.Font.SourceSansBold
+msg.TextSize = 20
+msg.Text = ""
+msg.Visible = false
+
+-- Helper: Get the equipped pet tool
+local function getHeldTool()
+	local char = player.Character or player.CharacterAdded:Wait()
+	return char:FindFirstChildOfClass("Tool")
+end
+
+-- Duplicate Pet Logic
+local function duplicatePet()
+	local heldTool = getHeldTool()
+	if not heldTool then
+		msg.Text = "❌ Hold a pet tool to duplicate"
+		msg.Visible = true
+		task.delay(2, function() msg.Visible = false end)
+		return
+	end
+
+	msg.Text = "🔁 Duplicating..."
+	msg.Visible = true
+
+	task.delay(1, function()
+		msg.Visible = false
+
+		-- Clone the entire tool (pet tool)
+		local toolClone = heldTool:Clone()
+		toolClone.Name = heldTool.Name .. "_Clone"
+
+		-- Optional: if the pet has a movement script, ensure it’s functional
+		for _, descendant in ipairs(toolClone:GetDescendants()) do
+			if descendant:IsA("Script") or descendant:IsA("LocalScript") then
+				descendant.Disabled = false
+			end
+		end
+
+		-- Add to player's Backpack (functional)
+		toolClone.Parent = player:FindFirstChildOfClass("Backpack") or player.Backpack
+	end)
+end
+
+-- Connect events (PC and Mobile)
+duplicateButton.MouseButton1Click:Connect(duplicatePet)
+duplicateButton.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch then
+		duplicatePet()
+	end
+end)
