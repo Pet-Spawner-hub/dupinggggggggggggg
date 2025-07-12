@@ -1,0 +1,128 @@
+local player = game.Players.LocalPlayer
+local mouse = player:GetMouse()
+
+-- GUI Setup
+local gui = Instance.new("ScreenGui")
+gui.Name = "PetDuplicationUI"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+-- Create black draggable duplicate button
+local duplicateBtn = Instance.new("TextButton")
+duplicateBtn.Name = "DuplicateButton"
+duplicateBtn.Size = UDim2.new(0, 160, 0, 50)
+duplicateBtn.Position = UDim2.new(0.5, -80, 0.9, 0)
+duplicateBtn.BackgroundColor3 = Color3.new(0, 0, 0)
+duplicateBtn.TextColor3 = Color3.new(1, 1, 1)
+duplicateBtn.Font = Enum.Font.SourceSansBold
+duplicateBtn.TextSize = 22
+duplicateBtn.Text = "Duplicate"
+duplicateBtn.Draggable = true
+duplicateBtn.Active = true
+duplicateBtn.Selectable = true
+duplicateBtn.Parent = gui
+
+-- Message label
+local msg = Instance.new("TextLabel")
+msg.Size = UDim2.new(0, 250, 0, 40)
+msg.Position = UDim2.new(0.5, -125, 0.8, -25)
+msg.BackgroundColor3 = Color3.new(0,0,0)
+msg.TextColor3 = Color3.new(1,1,1)
+msg.Font = Enum.Font.SourceSansBold
+msg.TextSize = 20
+msg.Text = ""
+msg.Visible = false
+msg.Parent = gui
+
+-- Create fake inventory frame
+local inventoryFrame = Instance.new("Frame")
+inventoryFrame.Name = "FakeInventoryUI"
+inventoryFrame.Size = UDim2.new(0, 300, 0, 200)
+inventoryFrame.Position = UDim2.new(0, 20, 0.7, 0)
+inventoryFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+inventoryFrame.BorderSizePixel = 2
+inventoryFrame.Parent = gui
+
+local uiGrid = Instance.new("UIGridLayout", inventoryFrame)
+uiGrid.CellSize = UDim2.new(0, 80, 0, 80)
+uiGrid.CellPadding = UDim2.new(0, 10, 0, 10)
+
+-- Folder to hold tools
+local fakeInventoryFolder = player:FindFirstChild("FakeInventory") or Instance.new("Folder", player)
+fakeInventoryFolder.Name = "FakeInventory"
+
+-- Clone pet from held Tool
+local function getHeldPet()
+    local char = player.Character or player.CharacterAdded:Wait()
+    local tool = char:FindFirstChildOfClass("Tool")
+    if not tool then return nil, nil end
+    local pet = tool:FindFirstChildWhichIsA("Model") or tool:FindFirstChild("Pet")
+    return pet, tool
+end
+
+-- Create inventory button for each fake tool
+local function createInventoryButton(tool)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 80, 0, 80)
+    btn.Text = tool.Name
+    btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.SourceSans
+    btn.TextSize = 14
+    btn.Parent = inventoryFrame
+
+    btn.MouseButton1Click:Connect(function()
+        -- Equip pet to player when clicked
+        player.Backpack:FindFirstChildOfClass("Tool")?.Parent = player.Backpack
+        tool.Parent = player.Backpack
+    end)
+end
+
+-- Duplication logic
+local function duplicatePet()
+    local pet, tool = getHeldPet()
+    if not pet then
+        msg.Text = "❌ Hold a pet to duplicate!"
+        msg.Visible = true
+        task.delay(2, function() msg.Visible = false end)
+        return
+    end
+
+    msg.Text = "Duping in 1 second..."
+    msg.Visible = true
+
+    task.delay(1, function()
+        msg.Visible = false
+
+        local petClone = pet:Clone()
+        local newTool = Instance.new("Tool")
+        newTool.Name = pet.Name .. "_Clone"
+        newTool.RequiresHandle = false
+
+        petClone.Parent = newTool
+
+        -- Optional: assign PrimaryPart as handle
+        if petClone.PrimaryPart then
+            newTool.Handle = petClone.PrimaryPart
+            newTool.RequiresHandle = true
+        end
+
+        -- Copy stats like Age and Weight
+        for _, attr in ipairs({"Age", "Weight"}) do
+            local val = pet:FindFirstChild(attr)
+            if val then val:Clone().Parent = petClone end
+        end
+
+        newTool.Parent = fakeInventoryFolder
+        createInventoryButton(newTool)
+    end)
+end
+
+duplicateBtn.MouseButton1Click:Connect(duplicatePet)
+
+-- Touch support for mobile
+duplicateBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        duplicatePet()
+    end
+end)
