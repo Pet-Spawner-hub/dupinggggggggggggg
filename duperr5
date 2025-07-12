@@ -1,0 +1,201 @@
+local player = game.Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local uis = game:GetService("UserInputService")
+local camera = workspace.CurrentCamera
+
+-- UI Setup
+local screenGui = Instance.new("ScreenGui", playerGui)
+screenGui.Name = "PetDupeGUI"
+screenGui.ResetOnSpawn = false
+
+-- Black Duplicate Button (higher position)
+local dupeButton = Instance.new("TextButton")
+dupeButton.Name = "DuplicateButton"
+dupeButton.Size = UDim2.new(0, 160, 0, 50)
+dupeButton.Position = UDim2.new(0.5, -80, 0.6, 0) -- Slightly higher
+dupeButton.BackgroundColor3 = Color3.new(0, 0, 0)
+dupeButton.TextColor3 = Color3.new(1, 1, 1)
+dupeButton.Font = Enum.Font.SourceSansBold
+dupeButton.TextSize = 22
+dupeButton.Text = "Duplicate"
+dupeButton.Draggable = true
+dupeButton.Parent = screenGui
+
+-- Message label
+local message = Instance.new("TextLabel", screenGui)
+message.Size = UDim2.new(0, 300, 0, 40)
+message.Position = UDim2.new(0.5, -150, 0.55, 0)
+message.BackgroundColor3 = Color3.new(0, 0, 0)
+message.TextColor3 = Color3.new(1, 1, 1)
+message.Font = Enum.Font.SourceSansBold
+message.TextSize = 20
+message.Visible = false
+
+-- Folder to hold placed pets
+local placedFolder = workspace:FindFirstChild("PlacedPets") or Instance.new("Folder", workspace)
+placedFolder.Name = "PlacedPets"
+
+-- Get currently held Tool
+local function getHeldTool()
+	local char = player.Character
+	if not char then return nil end
+	return char:FindFirstChildOfClass("Tool")
+end
+
+-- Enable movement and placement
+local function enablePlacement(petModel)
+	if not petModel.PrimaryPart then return end
+
+	-- Pet follows ground where mouse points
+	local moveConn
+	local dragging = true
+
+	moveConn = uis.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local mousePos = uis:GetMouseLocation()
+			local unitRay = camera:ScreenPointToRay(mousePos.X, mousePos.Y)
+			local rayParams = RaycastParams.new()
+			rayParams.FilterDescendantsInstances = {player.Character}
+			rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+			local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 100, rayParams)
+			if result then
+				local targetPos = result.Position + Vector3.new(0, petModel.PrimaryPart.Size.Y / 2, 0)
+				petModel:SetPrimaryPartCFrame(CFrame.new(targetPos))
+			end
+		end
+	end)
+
+	-- Click to place the pet
+	local clickConn
+	clickConn = uis.InputBegan:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+			moveConn:Disconnect()
+			clickConn:Disconnect()
+			petModel.Parent = placedFolder
+		end
+	end)
+end
+
+-- Duplicate pet logic
+local function duplicatePet()
+	local heldTool = getHeldTool()
+	if not heldTool then
+		message.Text = "❌ Hold a pet first!"
+		message.Visible = true
+		task.delay(2, function() message.Visible = false end)
+		return
+	end
+
+	message.Text = "🔁 Duplicating..."
+	message.Visible = true
+
+	task.delay(1, function()
+		message.Visible = false
+
+		local toolClone = heldTool:Clone()
+		local petModel = toolClone:FindFirstChildWhichIsA("Model")
+
+		if not petModel then return end
+
+		-- Prepare pet model for placement
+		petModel = petModel:Clone()
+		petModel.Name = heldTool.Name .. "_PlacedClone"
+		petModel.Parent = workspace
+		petModel:SetPrimaryPartCFrame(player.Character:GetPrimaryPartCFrame() * CFrame.new(0, 0, -5))
+
+		-- Enable any scripts
+		for _, descendant in ipairs(petModel:GetDescendants()) do
+			if descendant:IsA("Script") or descendant:IsA("LocalScript") then
+				descendant.Disabled = false
+			end
+		end
+
+		-- Start placement
+		enablePlacement(petModel)
+	end)
+end
+
+-- Connect the duplicate button
+dupeButton.MouseButton1Click:Connect(duplicatePet)
+-- PetBehaviorScript (Place this in the cloned pet Model)
+
+local pet = script.Parent
+local runService = game:GetService("RunService")
+local players = game:GetService("Players")
+local wanderRadius = 10
+local moveSpeed = 8
+
+local function findPlayer()
+	for _, player in pairs(players:GetPlayers()) do
+		if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			return player.Character.HumanoidRootPart
+		end
+	end
+end
+
+-- Billboard GUI for stats
+local function createStatsGui()
+	local ageVal = pet:FindFirstChild("Age")
+	local weightVal = pet:FindFirstChild("Weight")
+
+	local billboard = Instance.new("BillboardGui", pet.PrimaryPart)
+	billboard.Name = "StatsDisplay"
+	billboard.Size = UDim2.new(0, 150, 0, 40)
+	billboard.StudsOffset = Vector3.new(0, 3, 0)
+	billboard.AlwaysOnTop = true
+
+	local label = Instance.new("TextLabel", billboard)
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Font = Enum.Font.SourceSansBold
+	label.TextSize = 14
+	label.Text = ("Age: %s  |  Weight: %s"):format(
+		ageVal and ageVal.Value or "N/A",
+		weightVal and weightVal.Value or "N/A"
+	)
+end
+
+-- Random position within radius
+local function getRandomPosition()
+	local origin = pet.PrimaryPart.Position
+	local x = math.random(-wanderRadius, wanderRadius)
+	local z = math.random(-wanderRadius, wanderRadius)
+	local newPos = origin + Vector3.new(x, 0, z)
+	return newPos
+end
+
+-- Movement logic
+local function moveTo(targetPos)
+	local bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.MaxForce = Vector3.new(1e5, 0, 1e5)
+	bodyVelocity.Velocity = (targetPos - pet.PrimaryPart.Position).Unit * moveSpeed
+	bodyVelocity.Parent = pet.PrimaryPart
+
+	local connection
+	connection = runService.Stepped:Connect(function()
+		if (pet.PrimaryPart.Position - targetPos).Magnitude < 2 then
+			bodyVelocity:Destroy()
+			connection:Disconnect()
+		end
+	end)
+end
+
+-- Main behavior loop
+local function behaviorLoop()
+	while pet and pet.PrimaryPart do
+		local playerRoot = findPlayer()
+		if playerRoot and (playerRoot.Position - pet.PrimaryPart.Position).Magnitude < 20 then
+			moveTo(playerRoot.Position + Vector3.new(0, 0, -3)) -- Follow behind
+		else
+			moveTo(getRandomPosition()) -- Wander randomly
+		end
+		wait(math.random(3, 6))
+	end
+end
+
+-- Initialize
+createStatsGui()
+task.spawn(behaviorLoop)
