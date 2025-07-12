@@ -1,0 +1,228 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+local UserInputService = game:GetService("UserInputService")
+
+-- Create duplicate button
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+screenGui.Name = "DuplicationGui"
+
+local button = Instance.new("TextButton")
+button.Size = UDim2.new(0, 130, 0, 40)
+button.Position = UDim2.new(0.5, -65, 0, 40)  -- Higher than before
+button.BackgroundColor3 = Color3.new(0,0,0) -- black
+button.Text = "Duplicate"
+button.TextColor3 = Color3.new(1,1,1)
+button.Parent = screenGui
+button.Active = true
+button.Draggable = true
+
+-- Simple message label
+local messageLabel = Instance.new("TextLabel")
+messageLabel.Size = UDim2.new(0, 200, 0, 30)
+messageLabel.Position = UDim2.new(0.5, -100, 0, 90)
+messageLabel.BackgroundTransparency = 0.5
+messageLabel.BackgroundColor3 = Color3.new(0, 0, 0)
+messageLabel.TextColor3 = Color3.new(1,1,1)
+messageLabel.Text = ""
+messageLabel.Visible = false
+messageLabel.Parent = screenGui
+
+-- Helper: Show a message for 2 seconds
+local function showMessage(text)
+	messageLabel.Text = text
+	messageLabel.Visible = true
+	delay(2, function()
+		messageLabel.Visible = false
+	end)
+end
+
+-- Fake inventory (table of pets)
+local fakeInventory = {}
+
+-- Create a Folder to hold placed pets in workspace
+local placedFolder = workspace:FindFirstChild("PlacedPets")
+if not placedFolder then
+	placedFolder = Instance.new("Folder", workspace)
+	placedFolder.Name = "PlacedPets"
+end
+
+-- Pet Behavior Script template in ReplicatedStorage (see next step)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local petBehaviorTemplate = ReplicatedStorage:WaitForChild("PetBehaviorScript")
+
+-- Check if player is holding a pet (you must adapt this part to your game's way of holding pets)
+local function getHeldPetModel()
+	-- Example: suppose player.Character has a child "HeldPet" Model
+	-- You need to change this to your game's actual held pet reference
+	if player.Character then
+		return player.Character:FindFirstChild("HeldPet")
+	end
+	return nil
+end
+
+-- Place pet in garden (simple placement at mouse hit pos)
+local function placePet(petModel, position)
+	petModel.Parent = placedFolder
+	petModel:SetPrimaryPartCFrame(CFrame.new(position + Vector3.new(0, petModel.PrimaryPart.Size.Y/2, 0)))
+end
+
+-- Duplicate pet function
+local function duplicatePet()
+	local heldPet = getHeldPetModel()
+	if not heldPet then
+		showMessage("Hold a pet first")
+		return
+	end
+
+	-- Clone the pet model (deep clone)
+	local petClone = heldPet:Clone()
+
+	-- Attach behavior script from ReplicatedStorage
+	local behaviorScript = petBehaviorTemplate:Clone()
+	behaviorScript.Parent = petClone
+
+	-- Add ClickDetector to PrimaryPart for showing stats on click
+	if not petClone.PrimaryPart:FindFirstChildOfClass("ClickDetector") then
+		local cd = Instance.new("ClickDetector", petClone.PrimaryPart)
+		cd.MaxActivationDistance = 20
+	end
+
+	-- Add petClone to fake inventory (simulated here as a table)
+	table.insert(fakeInventory, petClone)
+
+	-- Show pet in your "inventory GUI" (this demo just parents to workspace so visible)
+	-- You can create a real GUI inventory list based on your game UI!
+	petClone.Parent = workspace
+	petClone.PrimaryPart.Anchored = true  -- So it doesn't fall until placed
+
+	-- Let player place pet by clicking on ground
+	local placing = true
+	showMessage("Click to place duplicated pet")
+
+	local placeConn
+	placeConn = mouse.Button1Down:Connect(function()
+		if placing then
+			local hitPos = mouse.Hit.p
+			placing = false
+			petClone.PrimaryPart.Anchored = false
+			placePet(petClone, hitPos)
+			placeConn:Disconnect()
+			showMessage("Pet placed! You can duplicate more.")
+		end
+	end)
+end
+
+button.MouseButton1Click:Connect(duplicatePet)
+local pet = script.Parent
+local runService = game:GetService("RunService")
+local players = game:GetService("Players")
+
+local wanderRadius = 10
+local moveSpeed = 8
+local followDistance = 20
+
+local petStatsGui
+local statsVisible = false
+
+-- Find first player root part
+local function findPlayerRoot()
+	for _, player in pairs(players:GetPlayers()) do
+		if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			return player.Character.HumanoidRootPart
+		end
+	end
+	return nil
+end
+
+-- Create BillboardGui for stats, hidden initially
+local function createStatsGui()
+	local ageVal = pet:FindFirstChild("Age")
+	local weightVal = pet:FindFirstChild("Weight")
+
+	if pet.PrimaryPart:FindFirstChild("StatsDisplay") then
+		pet.PrimaryPart.StatsDisplay:Destroy()
+	end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "StatsDisplay"
+	billboard.Size = UDim2.new(0, 150, 0, 40)
+	billboard.StudsOffset = Vector3.new(0, 3, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Enabled = false
+	billboard.Parent = pet.PrimaryPart
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Font = Enum.Font.SourceSansBold
+	label.TextSize = 14
+	label.Text = ("Age: %s  |  Weight: %s"):format(
+		ageVal and tostring(ageVal.Value) or "N/A",
+		weightVal and tostring(weightVal.Value) or "N/A"
+	)
+	label.Parent = billboard
+
+	return billboard
+end
+
+-- Random position near pet for wandering
+local function getRandomPosition()
+	local origin = pet.PrimaryPart.Position
+	local x = math.random(-wanderRadius, wanderRadius)
+	local z = math.random(-wanderRadius, wanderRadius)
+	return origin + Vector3.new(x, 0, z)
+end
+
+-- Move pet towards position with BodyVelocity
+local function moveTo(targetPos)
+	if not pet.PrimaryPart then return end
+
+	local bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.MaxForce = Vector3.new(1e5, 0, 1e5)
+	bodyVelocity.Velocity = (targetPos - pet.PrimaryPart.Position).Unit * moveSpeed
+	bodyVelocity.Parent = pet.PrimaryPart
+
+	local conn
+	conn = runService.Stepped:Connect(function()
+		if (pet.PrimaryPart.Position - targetPos).Magnitude < 2 then
+			bodyVelocity:Destroy()
+			conn:Disconnect()
+		end
+	end)
+end
+
+-- Toggle stats GUI visibility on click
+local function onPetClicked()
+	statsVisible = not statsVisible
+	petStatsGui.Enabled = statsVisible
+end
+
+-- Setup click detector
+local function setupClickDetector()
+	local cd = pet.PrimaryPart:FindFirstChildOfClass("ClickDetector")
+	if not cd then
+		cd = Instance.new("ClickDetector", pet.PrimaryPart)
+		cd.MaxActivationDistance = 20
+	end
+	cd.MouseClick:Connect(onPetClicked)
+end
+
+-- Main behavior loop (follow player or wander)
+local function behaviorLoop()
+	while pet and pet.PrimaryPart do
+		local playerRoot = findPlayerRoot()
+		if playerRoot and (playerRoot.Position - pet.PrimaryPart.Position).Magnitude < followDistance then
+			moveTo(playerRoot.Position + Vector3.new(0, 0, -3)) -- follow behind player
+		else
+			moveTo(getRandomPosition()) -- wander
+		end
+		wait(math.random(3, 6))
+	end
+end
+
+-- Initialize
+petStatsGui = createStatsGui()
+setupClickDetector()
+task.spawn(behaviorLoop)
