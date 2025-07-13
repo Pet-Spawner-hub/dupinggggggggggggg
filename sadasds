@@ -1,0 +1,108 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+
+-- UI Setup
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+screenGui.Name = "DuplicatePetGui"
+
+-- Draggable Duplicate Button
+local duplicateButton = Instance.new("TextButton")
+duplicateButton.Size = UDim2.new(0, 160, 0, 50)
+duplicateButton.Position = UDim2.new(0.5, -80, 0.85, 0)
+duplicateButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+duplicateButton.TextColor3 = Color3.new(1, 1, 1)
+duplicateButton.Text = "Duplicate Pet"
+duplicateButton.Parent = screenGui
+duplicateButton.Active = true
+duplicateButton.Draggable = true
+
+-- Label to show duplicating message
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(0, 200, 0, 30)
+statusLabel.Position = UDim2.new(0.5, -100, 0.8, -40)
+statusLabel.BackgroundTransparency = 1
+statusLabel.TextColor3 = Color3.new(1, 1, 1)
+statusLabel.TextScaled = true
+statusLabel.Text = ""
+statusLabel.Parent = screenGui
+
+-- Function to get the held pet (assumes pet is parented to character)
+local function getHeldPet()
+	local char = player.Character
+	if not char then return nil end
+	for _, child in pairs(char:GetChildren()) do
+		if child:IsA("Model") and child:FindFirstChild("PetTag") then
+			return child
+		end
+	end
+	return nil
+end
+
+-- Function to duplicate pet visually
+local function duplicatePet(pet)
+	local clone = pet:Clone()
+	clone.Name = pet.Name .. "_Duplicate"
+
+	-- Attach stats display
+	local statsBillboard = Instance.new("BillboardGui", clone)
+	statsBillboard.Size = UDim2.new(0, 200, 0, 100)
+	statsBillboard.StudsOffset = Vector3.new(0, 3, 0)
+	statsBillboard.AlwaysOnTop = true
+
+	local statsText = Instance.new("TextLabel", statsBillboard)
+	statsText.Size = UDim2.new(1, 0, 1, 0)
+	statsText.BackgroundTransparency = 1
+	statsText.TextColor3 = Color3.new(1, 1, 1)
+	statsText.TextScaled = true
+
+	local statsStr = "Name: " .. pet.Name
+	if pet:FindFirstChild("Weight") then
+		statsStr = statsStr .. "\nWeight: " .. pet.Weight.Value .. " kg"
+	end
+	if pet:FindFirstChild("Stats") then
+		for statName, statValue in pairs(pet.Stats:GetChildren()) do
+			statsStr = statsStr .. "\n" .. statValue.Name .. ": " .. tostring(statValue.Value)
+		end
+	end
+	statsText.Text = statsStr
+
+	-- Place in workspace
+	clone.Parent = workspace
+	clone:SetPrimaryPartCFrame(player.Character.HumanoidRootPart.CFrame * CFrame.new(3, 0, 0))
+
+	-- Make draggable (simplified)
+	local dragging = false
+
+	clone.PrimaryPart.Touched:Connect(function(hit)
+		if dragging then
+			clone:SetPrimaryPartCFrame(CFrame.new(hit.Position + Vector3.new(0, 2, 0)))
+		end
+	end)
+
+	mouse.Button1Down:Connect(function()
+		if mouse.Target and mouse.Target:IsDescendantOf(clone) then
+			dragging = true
+		end
+	end)
+
+	mouse.Button1Up:Connect(function()
+		dragging = false
+	end)
+end
+
+-- On Button Click
+duplicateButton.MouseButton1Click:Connect(function()
+	local pet = getHeldPet()
+	if pet then
+		statusLabel.Text = "Duplicating pet..."
+		wait(1)
+		duplicatePet(pet)
+		statusLabel.Text = ""
+	else
+		statusLabel.Text = "No pet held!"
+		wait(2)
+		statusLabel.Text = ""
+	end
+end)
