@@ -1,256 +1,188 @@
-local player = game.Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-local uis = game:GetService("UserInputService")
-local camera = workspace.CurrentCamera
+-- Core services & player references
+local Players      = game:GetService("Players")
+local RunService   = game:GetService("RunService")
+local uis          = game:GetService("UserInputService")
+local player       = Players.LocalPlayer
+local character    = player.Character or player.CharacterAdded:Wait()
+local camera       = workspace.CurrentCamera
 
--- UI Setup
-local screenGui = Instance.new("ScreenGui", playerGui)
-screenGui.Name = "PetDupeGUI"
+-- GUI setup
+local playerGui    = player:WaitForChild("PlayerGui")
+local screenGui    = Instance.new("ScreenGui")
+screenGui.Name     = "PetDupeGUI"
 screenGui.ResetOnSpawn = false
+screenGui.Parent   = playerGui
 
--- Black Duplicate Button (higher position)
-local dupeButton = Instance.new("TextButton")
-dupeButton.Name = "DuplicateButton"
-dupeButton.Size = UDim2.new(0, 160, 0, 50)
-dupeButton.Position = UDim2.new(0.5, -80, 0.6, 0) -- Slightly higher
-dupeButton.BackgroundColor3 = Color3.new(0, 0, 0)
-dupeButton.TextColor3 = Color3.new(1, 1, 1)
-dupeButton.Font = Enum.Font.SourceSansBold
-dupeButton.TextSize = 22
-dupeButton.Text = "Duplicate"
-dupeButton.Draggable = true
-dupeButton.Parent = screenGui
-
--- Message label
-local message = Instance.new("TextLabel", screenGui)
-message.Size = UDim2.new(0, 300, 0, 40)
-message.Position = UDim2.new(0.5, -150, 0.55, 0)
+local message = Instance.new("TextLabel")
+message.Size          = UDim2.new(0, 300, 0, 40)
+message.Position      = UDim2.new(0.5, -150, 0.55, 0)
 message.BackgroundColor3 = Color3.new(0, 0, 0)
-message.TextColor3 = Color3.new(1, 1, 1)
-message.Font = Enum.Font.SourceSansBold
-message.TextSize = 20
-message.Visible = false
+message.TextColor3   = Color3.new(1, 1, 1)
+message.Font          = Enum.Font.SourceSansBold
+message.TextSize      = 20
+message.Visible       = false
+message.Parent        = screenGui
 
--- Folder to hold placed pets
-local placedFolder = workspace:FindFirstChild("PlacedPets") or Instance.new("Folder", workspace)
-placedFolder.Name = "PlacedPets"
+local dupeButton = Instance.new("TextButton")
+dupeButton.Name         = "DuplicateButton"
+dupeButton.Size         = UDim2.new(0, 160, 0, 50)
+dupeButton.Position     = UDim2.new(0.5, -80, 0.6, 0)
+dupeButton.BackgroundColor3 = Color3.new(0, 0, 0)
+dupeButton.TextColor3   = Color3.new(1, 1, 1)
+dupeButton.Font         = Enum.Font.SourceSansBold
+dupeButton.TextSize     = 22
+dupeButton.Text         = "Duplicate"
+dupeButton.Parent       = screenGui
+dupeButton.Draggable    = true
 
--- Get currently held Tool
-local function getHeldTool()
-	local char = player.Character
-	if not char then return nil end
-	return char:FindFirstChildOfClass("Tool")
-end
-
--- Enable movement and placement
-local function enablePlacement(petModel)
-	if not petModel.PrimaryPart then return end
-
-	-- Pet follows ground where mouse points
-	local moveConn
-	local dragging = true
-
-	moveConn = uis.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-			local mousePos = uis:GetMouseLocation()
-			local unitRay = camera:ScreenPointToRay(mousePos.X, mousePos.Y)
-			local rayParams = RaycastParams.new()
-			rayParams.FilterDescendantsInstances = {player.Character}
-			rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-
-			local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 100, rayParams)
-			if result then
-				local targetPos = result.Position + Vector3.new(0, petModel.PrimaryPart.Size.Y / 2, 0)
-				petModel:SetPrimaryPartCFrame(CFrame.new(targetPos))
-			end
-		end
-	end)
-
-	-- Click to place the pet
-	local clickConn
-	clickConn = uis.InputBegan:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = false
-			moveConn:Disconnect()
-			clickConn:Disconnect()
-			petModel.Parent = placedFolder
-		end
-	end)
-end
-
--- Duplicate pet logic
-local function duplicatePet()
-	local heldTool = getHeldTool()
-	if not heldTool then
-		message.Text = "❌ Hold a pet first!"
-		message.Visible = true
-		task.delay(2, function() message.Visible = false end)
-		return
-	end
-
-	message.Text = "🔁 Duplicating..."
-	message.Visible = true
-
-	task.delay(1, function()
-		message.Visible = false
-
-		local toolClone = heldTool:Clone()
-		local petModel = toolClone:FindFirstChildWhichIsA("Model")
-
-		if not petModel then return end
-
-		-- Prepare pet model for placement
-		petModel = petModel:Clone()
-		petModel.Name = heldTool.Name .. "_PlacedClone"
-		petModel.Parent = workspace
-		petModel:SetPrimaryPartCFrame(player.Character:GetPrimaryPartCFrame() * CFrame.new(0, 0, -5))
-
-		-- Enable any scripts
-		for _, descendant in ipairs(petModel:GetDescendants()) do
-			if descendant:IsA("Script") or descendant:IsA("LocalScript") then
-				descendant.Disabled = false
-			end
-		end
-
-		-- Start placement
-		enablePlacement(petModel)
-	end)
-end
-
--- Connect the duplicate button
-dupeButton.MouseButton1Click:Connect(duplicatePet)
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local player = Players.LocalPlayer
-local mouse = player:GetMouse()
-
--- Folder to keep placed pets organized
+-- Folder for placed pets
 local placedFolder = workspace:FindFirstChild("PlacedPets")
 if not placedFolder then
-    placedFolder = Instance.new("Folder")
+    placedFolder = Instance.new("Folder", workspace)
     placedFolder.Name = "PlacedPets"
-    placedFolder.Parent = workspace
 end
 
--- Assume you have a reference to the duplicated pet model to place
-local duplicatedPet -- set this to your duplicated pet model before placement
+-- Utility: get the currently held pet tool
+local function getHeldTool()
+    local char = player.Character
+    if not char then return end
+    return char:FindFirstChildOfClass("Tool")
+end
 
--- Example: You might set this externally like
--- duplicatedPet = someDuplicatedPetModel
+-- Utility: display temporary messages
+local function flashMessage(txt, sec)
+    message.Text    = txt
+    message.Visible = true
+    task.delay(sec or 2, function()
+        message.Visible = false
+    end)
+end
 
+-- Behavior component: stats + wandering/following
 local function setupPetBehavior(pet)
     if not pet.PrimaryPart then return end
-
-    -- Add click detector to show stats above head
-    local clickDetector = pet.PrimaryPart:FindFirstChildOfClass("ClickDetector")
-    if not clickDetector then
-        clickDetector = Instance.new("ClickDetector")
-        clickDetector.MaxActivationDistance = 20
-        clickDetector.Parent = pet.PrimaryPart
+    -- Stats billboard
+    local cd = pet.PrimaryPart:FindFirstChildOfClass("ClickDetector")
+    if not cd then
+        cd = Instance.new("ClickDetector", pet.PrimaryPart)
+        cd.MaxActivationDistance = 20
     end
 
-    local age = pet:FindFirstChild("Age")
+    local age    = pet:FindFirstChild("Age")
     local weight = pet:FindFirstChild("Weight")
 
     local billboard = Instance.new("BillboardGui", pet.PrimaryPart)
-    billboard.Name = "StatsGui"
-    billboard.AlwaysOnTop = true
-    billboard.Size = UDim2.new(0, 150, 0, 40)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.Enabled = false
+    billboard.Name         = "StatsGui"
+    billboard.AlwaysOnTop  = true
+    billboard.Size         = UDim2.new(0, 150, 0, 40)
+    billboard.StudsOffset  = Vector3.new(0, 3, 0)
+    billboard.Enabled      = false
 
     local label = Instance.new("TextLabel", billboard)
-    label.Size = UDim2.new(1, 0, 1, 0)
+    label.Size              = UDim2.new(1, 0, 1, 0)
     label.BackgroundTransparency = 1
-    label.TextColor3 = Color3.new(1,1,1)
-    label.Font = Enum.Font.SourceSansBold
-    label.TextSize = 14
-    label.Text = "Age: "..(age and tostring(age.Value) or "N/A").." | Weight: "..(weight and tostring(weight.Value) or "N/A")
+    label.TextColor3        = Color3.new(1, 1, 1)
+    label.Font             = Enum.Font.SourceSansBold
+    label.TextSize         = 14
+    label.Text             = "Age: " .. (age and age.Value or "N/A") ..
+                              " | Weight: " .. (weight and weight.Value or "N/A")
 
-    clickDetector.MouseClick:Connect(function()
+    cd.MouseClick:Connect(function()
         billboard.Enabled = not billboard.Enabled
     end)
 
-    -- Basic wandering and following logic
-    local humanoidRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-    if not humanoidRoot then return end
-
-    local wanderRadius = 10
-    local followDistance = 20
-    local moveSpeed = 8
-
-    local function moveTo(targetPos)
+    -- Movement: wandering + follow
+    local function moveTo(pt)
         if not pet.PrimaryPart then return end
-        local bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.MaxForce = Vector3.new(1e5, 0, 1e5)
-        bodyVelocity.Velocity = (targetPos - pet.PrimaryPart.Position).Unit * moveSpeed
-        bodyVelocity.Parent = pet.PrimaryPart
+        local bv = Instance.new("BodyVelocity")
+        bv.MaxForce   = Vector3.new(1e5, 0, 1e5)
+        bv.Velocity   = (pt - pet.PrimaryPart.Position).Unit * 8
+        bv.Parent     = pet.PrimaryPart
 
         local conn
         conn = RunService.Stepped:Connect(function()
-            if (pet.PrimaryPart.Position - targetPos).Magnitude < 2 then
-                bodyVelocity:Destroy()
+            if not pet.PrimaryPart or (pet.PrimaryPart.Position - pt).Magnitude < 2 then
+                bv:Destroy()
                 conn:Disconnect()
             end
         end)
     end
 
-    local function getRandomPosition()
-        local origin = pet.PrimaryPart.Position
-        local x = math.random(-wanderRadius, wanderRadius)
-        local z = math.random(-wanderRadius, wanderRadius)
-        return origin + Vector3.new(x, 0, z)
-    end
-
     spawn(function()
         while pet and pet.PrimaryPart and pet.Parent do
-            local dist = (humanoidRoot.Position - pet.PrimaryPart.Position).Magnitude
-            if dist < followDistance then
-                moveTo(humanoidRoot.Position + Vector3.new(0, 0, -3))
+            local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if not root then break end
+            local dist = (root.Position - pet.PrimaryPart.Position).Magnitude
+            if dist < 20 then
+                moveTo(root.Position + Vector3.new(0, 0, -3))
             else
-                moveTo(getRandomPosition())
+                local origin = pet.PrimaryPart.Position
+                local x = math.random(-10, 10)
+                local z = math.random(-10, 10)
+                moveTo(origin + Vector3.new(x, 0, z))
             end
             wait(math.random(3, 6))
         end
     end)
 end
 
--- Function to place pet at mouse location in garden
-local function placePet(petModel)
+-- Placement handler
+local function placePetOnClick(petModel)
     if not petModel or not petModel.PrimaryPart then
-        warn("No valid pet model to place!")
+        warn("Invalid pet model.")
         return
     end
+    flashMessage("Click ground to place pet...", 3)
 
-    -- Wait for mouse click on ground
-    local placing = true
-    local connection
-
-    print("Click on the ground to place your pet.")
-
-    connection = mouse.Button1Down:Connect(function()
-        local hitPos = mouse.Hit.Position
-        if placing then
-            petModel.Parent = placedFolder
-            local heightOffset = petModel.PrimaryPart.Size.Y / 2
-            petModel:SetPrimaryPartCFrame(CFrame.new(hitPos + Vector3.new(0, heightOffset, 0)))
-            petModel.PrimaryPart.Anchored = false
-            setupPetBehavior(petModel)
-            print("Pet placed!")
-            placing = false
-            connection:Disconnect()
+    local conn
+    conn = uis.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local ray = camera:ScreenPointToRay(uis:GetMouseLocation())
+            local res = workspace:Raycast(ray.Origin, ray.Direction * 200, RaycastParams.new())
+            if res then
+                petModel.Parent = placedFolder
+                local offset = petModel.PrimaryPart.Size.Y / 2
+                petModel:SetPrimaryPartCFrame(CFrame.new(res.Position + Vector3.new(0, offset, 0)))
+                petModel.PrimaryPart.Anchored = false
+                setupPetBehavior(petModel)
+                flashMessage("✅ Pet placed!", 2)
+                conn:Disconnect()
+            end
         end
     end)
 end
 
--- Example: Set your duplicated pet here to test placement
--- You need to replace this with your actual duplicated pet reference
--- For demo, we wait 3 seconds and then call placePet(duplicatedPet)
+-- Main duplication function
+local function duplicatePet()
+    local tool = getHeldTool()
+    if not tool then
+        flashMessage("❌ Hold a pet tool first!", 2)
+        return
+    end
 
--- Example dummy pet clone for testing:
--- local dummyPet = workspace:FindFirstChild("ExamplePet"):Clone()
--- duplicatedPet = dummyPet
--- placePet(duplicatedPet)
+    flashMessage("🔁 Duplicating...", 1)
+    task.delay(1, function()
+        local toolClone = tool:Clone()
+        local petModel = toolClone:FindFirstChildWhichIsA("Model") or toolClone:Clone():FindFirstChildWhichIsA("Model")
+        if not petModel then
+            warn("No pet model in tool.")
+            return
+        end
 
--- You can call placePet(yourDuplicatedPetModel) when ready
+        petModel.Name   = tool.Name .. "_Clone"
+        petModel.Parent = workspace
+        petModel:SetPrimaryPartCFrame(character:GetPrimaryPartCFrame() * CFrame.new(0, 0, -5))
 
+        -- Re-enable any scripts
+        for _, d in ipairs(petModel:GetDescendants()) do
+            if d:IsA("Script") or d:IsA("LocalScript") then
+                d.Disabled = false
+            end
+        end
+
+        placePetOnClick(petModel)
+    end)
+end
+
+-- Connect GUI
+dupeButton.MouseButton1Click:Connect(duplicatePet)
